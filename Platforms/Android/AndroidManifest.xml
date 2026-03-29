@@ -1,6 +1,38 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true"></application>
+	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true">
+
+		<!-- Deep link intent filter for custom scheme -->
+		<activity android:name="MainActivity" android:exported="true">
+			<intent-filter>
+				<action android:name="android.intent.action.VIEW" />
+				<category android:name="android.intent.category.DEFAULT" />
+				<category android:name="android.intent.category.BROWSABLE" />
+				<!-- Custom URL scheme: mauinavigation://movie/42 -->
+				<data android:scheme="mauinavigation" />
+			</intent-filter>
+
+			<!-- App Links (verified HTTPS deep links)
+			     Requires hosting /.well-known/assetlinks.json on mauinavigation.app
+			     Example assetlinks.json:
+			     [{
+			       "relation": ["delegate_permission/common.handle_all_urls"],
+			       "target": {
+			         "namespace": "android_app",
+			         "package_name": "com.companyname.mauinavigation",
+			         "sha256_cert_fingerprints": ["YOUR_SHA256_FINGERPRINT"]
+			       }
+			     }]
+			-->
+			<intent-filter android:autoVerify="true">
+				<action android:name="android.intent.action.VIEW" />
+				<category android:name="android.intent.category.DEFAULT" />
+				<category android:name="android.intent.category.BROWSABLE" />
+				<data android:scheme="https" android:host="mauinavigation.app" />
+			</intent-filter>
+		</activity>
+
+	</application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
 </manifest>

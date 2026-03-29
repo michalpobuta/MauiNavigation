@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<base:BasePage
+    x:TypeArguments="viewmodels:FavoritesViewModel"
+    x:Class="MauiNavigation.Pages.Favorites.FavoritesPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:base="clr-namespace:MauiNavigation.Base"
+    xmlns:viewmodels="clr-namespace:MauiNavigation.Core.ViewModels;assembly=MauiNavigation.Core">
+
+    <Grid Padding="16">
+        <Label Text="Your favorites will appear here."
+               VerticalOptions="Center"
+               HorizontalOptions="Center"
+               TextColor="Gray" />
+    </Grid>
+
+</base:BasePage>

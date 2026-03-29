@@ -28,5 +28,37 @@
 	</array>
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
+
+	<!-- Custom URL scheme for deep links: mauinavigation://movie/42 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>MauiNavigation Deep Links</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mauinavigation</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- Universal Links (Associated Domains)
+	     Also requires adding Associated Domains entitlement in Entitlements.plist:
+	     <key>com.apple.developer.associated-domains</key>
+	     <array>
+	       <string>applinks:mauinavigation.app</string>
+	     </array>
+	     
+	     And hosting /.well-known/apple-app-site-association on mauinavigation.app:
+	     {
+	       "applinks": {
+	         "apps": [],
+	         "details": [{
+	           "appID": "TEAMID.com.companyname.mauinavigation",
+	           "paths": ["/movie/*", "/browse", "/favorites"]
+	         }]
+	       }
+	     }
+	-->
 </dict>
 </plist>

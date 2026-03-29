@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<base:BasePage
+    x:TypeArguments="viewmodels:MovieDetailViewModel"
+    x:Class="MauiNavigation.Pages.MovieDetail.MovieDetailPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:base="clr-namespace:MauiNavigation.Base"
+    xmlns:viewmodels="clr-namespace:MauiNavigation.Core.ViewModels;assembly=MauiNavigation.Core">
+
+    <Grid RowDefinitions="Auto,*" Padding="16">
+
+        <!-- Custom nav bar (BasePage hides Shell nav bar by default) -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,0,0,16">
+            <Button Grid.Column="0"
+                    Text="← Back"
+                    Command="{Binding Source={RelativeSource AncestorType={x:Type viewmodels:MovieDetailViewModel}}, Path=GoBackCommand}" />
+            <Label Grid.Column="1"
+                   Text="{Binding Title}"
+                   FontSize="20"
+                   FontAttributes="Bold"
+                   VerticalOptions="Center"
+                   Margin="8,0" />
+        </Grid>
+
+        <!-- Content -->
+        <VerticalStackLayout Grid.Row="1" Spacing="12">
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+            <Label Text="{Binding Title}" FontSize="24" FontAttributes="Bold" />
+            <Label Text="{Binding MovieId, StringFormat='Movie ID: {0}'}" TextColor="Gray" />
+            <Label Text="Full details would be loaded from a movie service in a real app."
+                   TextColor="Gray" FontSize="14" />
+        </VerticalStackLayout>
+
+    </Grid>
+
+</base:BasePage>
