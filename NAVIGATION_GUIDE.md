@@ -1,6 +1,21 @@
 # MAUI Navigation Guide: Shell Navigation with a Framework-Agnostic Core
 
-This article walks through the navigation architecture used in the Movies example app in this repository. It targets intermediate developers who want a complete mental model, with senior-level callouts explaining why specific decisions were made.
+---
+
+## About This Guide
+
+**Audience:** Intermediate .NET MAUI developers seeking a complete mental model of Shell navigation, with senior-level callouts explaining key decisions.
+
+**Estimated read time:** ~45 minutes (full guide) · ~20 minutes (Sections 1–11 only)
+
+**Suggested reading path:**
+- **New to this architecture?** Read Sections 1–11 sequentially. These cover the implemented baseline.
+- **Adding a specific feature?** Jump to the relevant advanced section (12–19), then consult the Quick Reference (Section 20).
+- **Quick lookup?** Start with Section 20 (Quick Reference) and follow links backward.
+
+**Scope:**
+- **Sections 1–11 (Fundamentals)** — Implemented baseline in this repository. Code examples reference actual files.
+- **Sections 12–20 (Advanced Patterns)** — Optional extension patterns. These are design templates you can adopt as your app grows; they are not currently implemented in this repo.
 
 The full source is in this repo. Read the code alongside the article — sections reference file paths directly.
 
@@ -8,7 +23,7 @@ The full source is in this repo. Read the code alongside the article — section
 
 ## Table of Contents
 
-### Fundamentals
+### Part I: Fundamentals (Implemented Baseline)
 1. [Why Shell Navigation + the Core/App Split](#1-why-shell-navigation--the-coreapp-split)
 2. [Project Setup](#2-project-setup)
 3. [INavigationService Contract + Strongly-Typed Parameters](#3-inavigationservice-contract--strongly-typed-parameters)
@@ -21,7 +36,7 @@ The full source is in this repo. Read the code alongside the article — section
 10. [Real-World Walk-Through](#10-real-world-walk-through)
 11. [Gotchas and Tips](#11-gotchas-and-tips)
 
-### Advanced Patterns
+### Part II: Advanced Patterns (Optional Extensions)
 12. [Error Handling and User Feedback](#12-error-handling-and-user-feedback)
 13. [Returning Results from Modals](#13-returning-results-from-modals)
 14. [Tab Navigation](#14-tab-navigation)
@@ -32,22 +47,24 @@ The full source is in this repo. Read the code alongside the article — section
 19. [Testing ViewModels](#19-testing-viewmodels)
 20. [Quick Reference](#20-quick-reference)
 
+### Appendix
+- [Architecture Invariants](#architecture-invariants)
+
 ---
 
 ## 1. Why Shell Navigation + the Core/App Split
 
-### MAUI Shell navigation
+### MAUI Shell Navigation
 
-MAUI Shell provides URI-based navigation: you call `Shell.Current.GoToAsync("MovieDetailPage")` and Shell handles pushing a page onto the navigation stack, managing the back button, and delivering query parameters via `IQueryAttributable`. You register routes with `Routing.RegisterRoute` once at startup and navigate to them by name from anywhere in the app.
+MAUI Shell provides URI-based navigation: you call `Shell.Current.GoToAsync("MovieDetailPage")` and Shell handles pushing a page onto the navigation stack, managing the back button, and delivering query parameters via `IQueryAttributable`. Register routes once at startup with `Routing.RegisterRoute` and navigate by name from anywhere.
 
-This is a significant improvement over manually managing a navigation stack. Shell gives you:
-
+Shell gives you:
 - A back stack that works correctly across tabs
 - Query parameter delivery to destination pages
 - Deep link support for free (the same URIs work as app deep links)
 - A `..` route that always means "go back one level"
 
-### The Core/App split
+### The Core/App Split
 
 The app is structured as two projects:
 
@@ -56,11 +73,13 @@ The app is structured as two projects:
 | `MauiNavigation.Core` | `net10.0` | ViewModels, navigation contracts, parameters, models |
 | `MauiNavigation` (the App) | `net10.0-android`, `net10.0-ios`, etc. | Pages, infrastructure, DI wiring |
 
-`MauiNavigation.Core` has **zero** `Microsoft.Maui.Controls` references. This is enforced at compile time by the csproj — if a ViewModel accidentally tries to use `Shell.Current` or `ContentPage`, it won't compile. The consequence is real: you can run the entire ViewModel test suite in a plain `net10.0` xUnit project with no MAUI infrastructure, no emulator, no device.
+`MauiNavigation.Core` has **zero** `Microsoft.Maui.Controls` references. This is enforced at compile time — if a ViewModel accidentally tries to use `Shell.Current` or `ContentPage`, it won't compile. You can run the entire ViewModel test suite in a plain `net10.0` xUnit project with no MAUI infrastructure.
 
-> **Senior tip:** The boundary also makes the architecture explicit to new team members. If a developer asks "can I use `Shell.Current` in a ViewModel?", the compiler already answered: no. You don't need a code review comment.
+> **Senior tip:** The boundary makes the architecture explicit. If a developer asks "can I use `Shell.Current` in a ViewModel?", the compiler already answered: no.
 
-The split does require solving one problem: ViewModels need to trigger navigation, but they cannot reference MAUI page types. The `INavigationService` interface and `Routes` constants exist to solve exactly this problem — covered in Section 3.
+The split requires solving one problem: ViewModels need to trigger navigation but cannot reference MAUI page types. The `INavigationService` interface and `Routes` constants solve exactly this — covered in Section 3.
+
+**Takeaway:** The two-project split enforces ViewModel testability at compile time and makes architectural boundaries explicit.
 
 ---
 
@@ -89,6 +108,8 @@ Two dependencies only:
 - **Microsoft.Extensions.Logging.Abstractions** — the `ILogger` interface only. No concrete logger is pulled in; the App project supplies that at runtime.
 
 There is no `Microsoft.Maui.Controls` reference here. That absence is the enforcement mechanism.
+
+**Takeaway:** Core depends only on MVVM toolkit and logging abstractions — no MAUI framework types.
 
 ### App project (`MauiNavigation.csproj`)
 
@@ -149,7 +170,7 @@ public interface INavigationService
 
 This interface lives in Core so ViewModels can call it. The only implementation (`ShellNavigationService`) lives in the App project and references `Shell.Current` directly.
 
-### Routes
+### Routes Constants
 
 ```csharp
 // MauiNavigation.Core/Navigation/Routes.cs
@@ -170,9 +191,9 @@ Facade.Navigation.GoToAsync(Routes.MovieDetail, new MovieDetailParameters(movie.
 
 Core cannot write `nameof(MovieDetailPage)` — `MovieDetailPage` is a MAUI page type that lives in the App project, which Core cannot reference. The `Routes` class bridges this: it holds the same string values that `AppShell.xaml.cs` uses in `Routing.RegisterRoute(nameof(MovieDetailPage), ...)`.
 
-> **Senior tip:** The constraint is that `Routes.MovieDetail` must equal `nameof(MovieDetailPage)` at all times. Both are currently the string `"MovieDetailPage"`. The only way this gets out of sync is if someone renames the page class without updating the constant. A test that resolves the route against the DI container (or a simple string comparison test) catches this before it reaches production.
+> **Senior tip:** The constraint is that `Routes.MovieDetail` must equal `nameof(MovieDetailPage)` at all times. A test that resolves the route against the DI container (or a simple string comparison test) catches drift before it reaches production.
 
-### Strongly-typed parameters
+### Strongly-Typed Parameters
 
 ```csharp
 // MauiNavigation.Core/Navigation/Parameters/MovieDetailParameters.cs
@@ -188,9 +209,9 @@ namespace MauiNavigation.Core.Navigation.Parameters;
 public record FilterParameters(string? Genre, int? MinYear);
 ```
 
-Parameters are plain C# records. They have no dependency on MAUI or on any serialization framework. Using records gives structural equality for free, which is useful in tests.
+Parameters are plain C# records with no MAUI or serialization dependencies. Records give structural equality for free, which is useful in tests.
 
-### The `__params` key pattern
+### The `__params` Key (Canonical Explanation)
 
 When `GoToAsync<TParams>` is called, the implementation wraps the parameter object in a `ShellNavigationQueryParameters` dictionary under the key `"__params"`:
 
@@ -210,6 +231,8 @@ if (query.TryGetValue("__params", out var p) && p is MovieDetailParameters parms
 ```
 
 This avoids serialization entirely. The parameter object is the same instance the calling ViewModel created.
+
+**Takeaway:** `"__params"` passes objects by reference; `"__isBack"` signals back-navigation (see Section 5). These two keys are the only custom conventions in the navigation system.
 
 ---
 
@@ -235,9 +258,11 @@ public class BaseViewModelFacade(INavigationService navigation, ILogger<BaseView
 
 Every ViewModel in the app needs at minimum `INavigationService` and `ILogger`. Without the facade, every ViewModel constructor would declare both. When you add a third shared service (say, an analytics service), you update the facade's constructor and nothing else changes — no ViewModel constructor is modified, no DI registration for every ViewModel is touched.
 
-The pattern is called the **Facade** pattern: a single aggregating object that reduces the number of constructor parameters for consumers.
+The pattern is called the **Facade** pattern: a single aggregating object that reduces constructor parameters for consumers.
 
-> **Senior tip:** `BaseViewModelFacade` is registered as a **Singleton**, while ViewModels are **Transient**. This is intentional and correct. Multiple transient ViewModel instances share a single facade instance. The facade holds no per-ViewModel state — it is a container of stateless service references. If the facade held state, the singleton lifetime would be wrong. Always verify that services aggregated in a facade are themselves safe to share across transient consumers (i.e., they are stateless or thread-safe).
+> **Senior tip:** `BaseViewModelFacade` is registered as a **Singleton**, while ViewModels are **Transient**. This is intentional. The facade holds no per-ViewModel state — it contains stateless service references. Always verify that services aggregated in a facade are safe to share across transient consumers.
+
+**Takeaway:** Add new shared services to the facade's constructor; no ViewModel constructor changes needed.
 
 ---
 
@@ -399,7 +424,7 @@ public abstract partial class BaseViewModel<T> : ObservableValidator, INavigatio
 
 There are five concepts worth unpacking.
 
-### Lifecycle wrappers vs virtual hooks
+### Lifecycle Wrappers vs Virtual Hooks
 
 `BasePage` calls `OnAppearingInternal()` (public, sealed in practice) and `OnDisappearingInternal()`. These are the *wrappers* — they manage the `CancellationTokenSource` and error handling. Subclasses override the *virtual hooks* `OnAppearingAsync(ct)` and `OnDisappearingAsync()`.
 
@@ -413,17 +438,17 @@ BasePage.OnAppearing()
 
 This structure means a subclass can never accidentally skip the CTS setup or swallow exceptions from the wrapper layer — they only override the payload method.
 
-### CancellationToken lifecycle
+### CancellationToken Lifecycle
 
-The `LifecycleToken` is created lazily when first accessed and cancelled in `OnDisappearingInternal`. On re-appear, `OnAppearingInternal` checks whether the existing CTS is cancelled and creates a fresh one if so — but if the CTS already exists and is still valid (e.g. it was created by `ApplyNavigationParameters` before `OnAppearing` fired), it is reused rather than replaced.
+The `LifecycleToken` is created lazily when first accessed and cancelled in `OnDisappearingInternal`. On re-appear, `OnAppearingInternal` checks whether the existing CTS is cancelled and creates a fresh one if so — but if the CTS already exists and is still valid, it is reused.
 
-Shell calls `ApplyQueryAttributes` — and therefore `ApplyNavigationParameters` — before `OnAppearing`. This ordering means async work started by `InitializeFromQueryAsync` may already be in-flight when `OnAppearingAsync` is called.
+**Key timing:** Shell calls `ApplyQueryAttributes` (and therefore `ApplyNavigationParameters`) *before* `OnAppearing`. Async work started by `InitializeFromQueryAsync` may already be in-flight when `OnAppearingAsync` fires.
 
-This means any async work started in `OnAppearingAsync` (or via `SafeFireAndForget`) will be cancelled automatically when the page disappears — without the ViewModel needing to track the token manually.
+Any async work started in `OnAppearingAsync` (or via `SafeFireAndForget`) will be cancelled automatically when the page disappears.
 
-> **Senior tip:** The `ReferenceEquals` guard in the `finally` block of `OnDisappearingInternal` exists to handle a specific race condition. If a page disappears and re-appears very quickly — faster than the disappear task completes — a new CTS will have been created by `OnAppearingInternal`. Without the `ReferenceEquals` check, the `finally` block would dispose the *new* CTS, cancelling work that was legitimately started for the new appear cycle. The guard ensures only the CTS that was captured at the start of the disappearing cycle is disposed.
+> **Senior tip:** The `ReferenceEquals` guard in `OnDisappearingInternal`'s `finally` block handles a race condition. If a page disappears and re-appears very quickly, a new CTS will have been created. Without the guard, the `finally` block would dispose the *new* CTS.
 
-### ApplyNavigationParameters and `isGoBack`
+### ApplyNavigationParameters and `__isBack` (Canonical Explanation)
 
 ```csharp
 public void ApplyNavigationParameters(IDictionary<string, object> query)
@@ -434,11 +459,11 @@ public void ApplyNavigationParameters(IDictionary<string, object> query)
 }
 ```
 
-Shell calls `ApplyQueryAttributes` (via `BasePage`) both when navigating *to* a page and when navigating *back* to it. The `isGoBack` flag lets `InitializeFromQueryAsync` know which case it is, so the ViewModel can skip an expensive data fetch when the user is just returning from a child screen.
+Shell calls `ApplyQueryAttributes` (via `BasePage`) both when navigating *to* a page and when navigating *back* to it. The `isGoBack` flag lets `InitializeFromQueryAsync` distinguish these cases, so the ViewModel can skip expensive data fetches when the user is returning from a child screen.
 
-The sentinel is *key presence*, not key value. `query.ContainsKey("__isBack")` returns `true` if the key is present — that boolean becomes `isGoBack`. The value stored under `"__isBack"` is irrelevant. `Remove` cannot be used here because `ShellNavigationQueryParameters` is a read-only dictionary type; calling `Remove` on it throws at runtime.
+The sentinel is *key presence*, not key value. `query.ContainsKey("__isBack")` returns `true` if the key is present. `Remove` cannot be used here because `ShellNavigationQueryParameters` is a read-only dictionary type.
 
-### IsBusy ref-counting with `Interlocked`
+### IsBusy Ref-Counting
 
 ```csharp
 Interlocked.Increment(ref _busyCount);
@@ -448,20 +473,20 @@ if (showLoader && Interlocked.Decrement(ref _busyCount) <= 0)
     IsBusy = false;
 ```
 
-`IsBusy` is not a simple boolean flip. It is backed by a ref-counted integer. If two concurrent `SafeFireAndForget` calls are running simultaneously, `IsBusy` stays `true` until *both* complete. A simple `IsBusy = false` in the `finally` would turn off the loading indicator when the first call finishes, even though the second is still running. The ref-count prevents this.
+`IsBusy` is not a simple boolean flip. It is backed by a ref-counted integer. If two concurrent `SafeFireAndForget` calls are running, `IsBusy` stays `true` until *both* complete. `Interlocked.Increment` and `Interlocked.Decrement` are lock-free atomic operations.
 
-`Interlocked.Increment` and `Interlocked.Decrement` are lock-free atomic operations. The busy count is updated correctly even if two tasks complete on different threads simultaneously.
-
-### SafeFireAndForget / ExecuteSafeAsync
+### SafeFireAndForget
 
 ```csharp
 protected void SafeFireAndForget(Func<CancellationToken, Task> action, bool showLoader = false)
     => _ = ExecuteSafeAsync(action, showLoader);
 ```
 
-`SafeFireAndForget` discards the `Task` (the `_ =` assignment silences the "unawaited task" warning) but does not abandon it. The task still runs; exceptions are caught in `ExecuteSafeAsync` and logged. `OperationCanceledException` is silently swallowed — cancellation is expected, not an error.
+`SafeFireAndForget` discards the `Task` (the `_ =` assignment silences the warning) but does not abandon it. The task runs; exceptions are caught and logged. `OperationCanceledException` is silently swallowed — cancellation is expected, not an error.
 
 The pattern is appropriate for UI-triggered async work (page load, data fetch) where the caller cannot `await` because it originates from a synchronous lifecycle method.
+
+**Takeaway:** Override `OnAppearingAsync` and `InitializeFromQueryAsync`; let the base class handle CTS, error logging, and IsBusy.
 
 ---
 
@@ -519,19 +544,21 @@ public abstract class BasePage<TViewModel> : ContentPage, IQueryAttributable, ID
 }
 ```
 
-`BasePage` is the bridge layer between MAUI's framework concerns and the framework-agnostic Core. It lives in the App project, not in Core, because it directly references `ContentPage`, `IQueryAttributable`, and `Shell` — all from `Microsoft.Maui.Controls`.
+`BasePage` is the bridge layer between MAUI's framework concerns and the framework-agnostic Core. It lives in the App project because it directly references `ContentPage`, `IQueryAttributable`, and `Shell`.
 
-### Why `IQueryAttributable` belongs here, not in Core
+### Why IQueryAttributable Belongs Here, Not in Core
 
-`IQueryAttributable` is defined in `Microsoft.Maui.Controls`. If `INavigationParameterReceiver` (which *is* in Core) tried to extend `IQueryAttributable`, Core would need a reference to `Microsoft.Maui.Controls`. The split would collapse.
+`IQueryAttributable` is defined in `Microsoft.Maui.Controls`. If `INavigationParameterReceiver` (in Core) tried to extend it, Core would need a MAUI reference. The split would collapse.
 
-Instead, `BasePage` implements `IQueryAttributable` and immediately forwards to `ViewModel.ApplyNavigationParameters(query)`. The ViewModel never knows about `IQueryAttributable` — it only knows about `INavigationParameterReceiver`, which is defined in Core.
+Instead, `BasePage` implements `IQueryAttributable` and forwards to `ViewModel.ApplyNavigationParameters(query)`. The ViewModel never knows about `IQueryAttributable`.
 
-### The ApplyQueryAttributes timing gap
+### ApplyQueryAttributes Timing (Canonical Explanation)
 
-`ApplyQueryAttributes` is called by Shell when navigating *to* a page, and also when navigating *back* to a page (Shell injects `__isBack`). However, it is **not called** when a modal is dismissed above this page. When `PopModalAsync` completes, MAUI calls `OnAppearing` on the page below, not `ApplyQueryAttributes`.
+`ApplyQueryAttributes` is called by Shell when navigating *to* a page and when navigating *back* to a page. However, it is **not called** when a modal is dismissed above this page. When `PopModalAsync` completes, MAUI calls `OnAppearing` on the page below, not `ApplyQueryAttributes`.
 
-The practical consequence: post-dismiss refresh logic must go in `OnAppearingAsync`, not `InitializeFromQueryAsync`. `BrowseViewModel` handles this naturally — it checks `Movies.Count == 0` in `OnAppearingAsync`, so any re-appear triggers a check regardless of how the re-appear happened. In a real app with a shared filter service, `OnAppearingAsync` would read the current filter state from that service on every appear.
+**Practical consequence:** Post-dismiss refresh logic must go in `OnAppearingAsync`, not `InitializeFromQueryAsync`.
+
+**Takeaway:** `BasePage` implements MAUI's `IQueryAttributable` and delegates to the ViewModel. Modal dismisses skip `ApplyQueryAttributes` entirely.
 
 ---
 
@@ -593,7 +620,7 @@ public partial class AppShell : Shell
 }
 ```
 
-### Two registration paths
+### Two Registration Paths
 
 There are two entirely different mechanisms at work:
 
@@ -605,7 +632,9 @@ This is MAUI Shell's built-in route registry. When `Shell.Current.GoToAsync("Mov
 
 This registers the page in `ShellNavigationService`'s own private dictionary. Modals are presented via `PushModalAsync`, which bypasses Shell's route resolution entirely. Shell never calls `ApplyQueryAttributes` for modals. This is why `ShellNavigationService.PresentModalAsync<TParams>` calls `ApplyNavigationParameters` directly on the ViewModel before pushing.
 
-> **The critical invariant:** `nameof(MovieDetailPage)` is evaluated at compile time to the string `"MovieDetailPage"`. `Routes.MovieDetail` is the constant `"MovieDetailPage"`. Both must be identical. If you rename `MovieDetailPage` to `FilmDetailPage`, you must also update `Routes.MovieDetail`. The compiler cannot enforce this relationship — it is a runtime contract.
+> **Critical invariant:** `nameof(MovieDetailPage)` must equal `Routes.MovieDetail`. Both are currently `"MovieDetailPage"`. The compiler cannot enforce this — it is a runtime contract.
+
+**Takeaway:** Push routes use `Routing.RegisterRoute`; modal routes use a custom registry. Modals bypass Shell's parameter delivery.
 
 ---
 
@@ -689,7 +718,7 @@ public Task GoBackAsync(bool animated = true)
 }
 ```
 
-Shell's `".."` route means "navigate back one level". The `__isBack` key is injected into the parameters so the parent page receives it in `ApplyQueryAttributes`. The parent ViewModel reads this in `ApplyNavigationParameters` to set `isGoBack = true`, allowing `InitializeFromQueryAsync` to skip a data reload.
+Shell's `".."` route means "navigate back one level". The `__isBack` key is injected so the parent page receives it in `ApplyQueryAttributes`, allowing `InitializeFromQueryAsync` to skip a data reload. (See Section 5 for details on `__isBack` handling.)
 
 ### GoToAsync\<TParams\>
 
@@ -701,9 +730,9 @@ public Task GoToAsync<TParams>(string route, TParams parameters, bool animated =
 }
 ```
 
-`ShellNavigationQueryParameters` is a MAUI dictionary type specifically designed to pass object references through Shell navigation without URL-encoding them. The `"__params"` key is the convention used throughout this app to carry the typed parameter object to the destination.
+`ShellNavigationQueryParameters` passes object references through Shell navigation without URL-encoding. The `"__params"` key carries the typed parameter object to the destination. (See Section 3 for the canonical `__params` explanation.)
 
-### PresentModalAsync\<TParams\>
+### PresentModalAsync\<TParams\> (Canonical Modal Parameter Delivery)
 
 ```csharp
 public Task PresentModalAsync<TParams>(string route, TParams parameters, bool animated = true) where TParams : class
@@ -715,7 +744,7 @@ public Task PresentModalAsync<TParams>(string route, TParams parameters, bool an
 }
 ```
 
-`PushModalAsync` does not go through Shell's routing system. Shell does not call `ApplyQueryAttributes` for modal pages. The service therefore calls `ApplyNavigationParameters` directly on the ViewModel (accessed via `BindingContext`) *before* pushing the page. This fires `InitializeFromQueryAsync` asynchronously before the page becomes visible — correct behavior since the page will appear after `PushModalAsync`.
+`PushModalAsync` does not go through Shell's routing system. Shell does not call `ApplyQueryAttributes` for modal pages. The service therefore calls `ApplyNavigationParameters` directly on the ViewModel *before* pushing the page.
 
 ### ResolveModalPage
 
@@ -729,7 +758,9 @@ private ContentPage ResolveModalPage(string route)
 }
 ```
 
-Pages are resolved from the DI container, which means a fresh `FilterPage` (and a fresh `FilterViewModel`) is created each time the modal is presented. This is the correct behavior for Transient registrations. If you need to carry state across multiple presentations of the same modal, put that state in a service with a longer lifetime.
+Pages are resolved from the DI container, meaning a fresh page and ViewModel is created each time. If you need state across multiple presentations, put that state in a service with a longer lifetime.
+
+**Takeaway:** Push navigation uses `ShellNavigationQueryParameters`; modal navigation calls `ApplyNavigationParameters` directly before pushing.
 
 ---
 
@@ -795,21 +826,21 @@ public partial class App : Application
 }
 ```
 
-### Lifetime decisions explained
+### Lifetime Decisions
 
 **Infrastructure as Singleton**
 
-`INavigationService` / `ShellNavigationService` holds the modal registry (a `Dictionary<string, Type>`). If it were Transient, a new instance would be created for each resolution — the modal registry populated in `AppShell`'s constructor would be on a different instance than the one used when `PresentModalAsync` is called. Singleton ensures one registry for the app lifetime.
+`INavigationService` / `ShellNavigationService` holds the modal registry. If Transient, the modal registry populated in `AppShell` would be on a different instance than the one used when `PresentModalAsync` is called.
 
-`BaseViewModelFacade` is Singleton because it holds no per-ViewModel state. Registering it Singleton means all Transient ViewModels share one facade instance — correct and efficient.
+`BaseViewModelFacade` is Singleton because it holds no per-ViewModel state.
 
-`AppShell` is Singleton because there is only one shell in the app. Shell manages its own navigation stack; creating a second instance would produce a second disconnected navigation stack.
+`AppShell` is Singleton because there is only one shell in the app.
 
 **ViewModels and Pages as Transient**
 
-Each navigation push should produce a fresh ViewModel with clean state. If `MovieDetailViewModel` were Singleton, navigating to two different movies would reuse the same ViewModel instance — the second movie's data would overwrite the first, but more importantly, if the user navigated back to the first movie, the ViewModel would show the second movie's data.
+Each navigation push should produce a fresh ViewModel with clean state. If `MovieDetailViewModel` were Singleton, navigating to two different movies would reuse the same instance — the second movie's data would overwrite the first.
 
-Pages are registered Transient because their lifetime must match their ViewModel's lifetime. A Singleton page holds a reference to its ViewModel forever. If the ViewModel is Transient, a new one is created for each navigation push — but the Singleton page still has the old ViewModel as its `BindingContext`. The new ViewModel's properties will never appear in the UI.
+Pages are Transient because their lifetime must match their ViewModel's lifetime. A Singleton page holds a reference to its ViewModel forever; if the ViewModel is Transient, the page's `BindingContext` would become stale.
 
 **Why App receives IServiceProvider**
 
@@ -822,7 +853,9 @@ public App(IServiceProvider services)
 
 `AppShell` has a constructor parameter (`INavigationService`), so it cannot be instantiated with `new AppShell()`. MAUI's `UseMauiApp<App>()` creates the `App` instance via DI, so `App` can receive `IServiceProvider` in its constructor and use it to resolve `AppShell` from the container.
 
-> **Senior tip:** Resolving `AppShell` from `IServiceProvider` directly (service locator pattern) is acceptable here because this is the composition root — the single place in the application where the object graph is assembled. Using service locator outside the composition root is a code smell; using it *at* the composition root is standard practice.
+> **Senior tip:** Resolving `AppShell` from `IServiceProvider` directly (service locator pattern) is acceptable here because this is the composition root — the single place where the object graph is assembled.
+
+**Takeaway:** Infrastructure is Singleton; ViewModels and Pages are Transient with matching lifetimes.
 
 ---
 
@@ -854,12 +887,12 @@ private Task SelectMovie(Movie movie) =>
 
 **Step 3 — Shell navigates to MovieDetailPage**
 
-Shell resolves `MovieDetailPage` from the DI container (Transient → new instance), pushes it, then calls `ApplyQueryAttributes` on the new page.
+Shell resolves `MovieDetailPage` from the DI container (Transient → new instance), pushes it, then calls `ApplyQueryAttributes`.
 
 ```
 MovieDetailPage.ApplyQueryAttributes(query)
 → MovieDetailViewModel.ApplyNavigationParameters(query)
-→ isGoBack = query.ContainsKey("__isBack")  // false, key not present
+→ isGoBack = query.ContainsKey("__isBack")  // false
 → SafeFireAndForget(ct => InitializeFromQueryAsync(query, isGoBack=false, ct))
 ```
 
@@ -867,9 +900,9 @@ MovieDetailPage.ApplyQueryAttributes(query)
 // MovieDetailViewModel.cs
 public override Task InitializeFromQueryAsync(IDictionary<string, object> query, bool isGoBack, CancellationToken ct)
 {
-    if (isGoBack) return Task.CompletedTask;  // not triggered on forward navigation
+    if (isGoBack) return Task.CompletedTask;
 
-    if (query.TryGetValue("__params", out var p) && p is MovieDetailParameters parms)
+    if (query.TryGetValue("__params", out var p) && p is MovieDetailParams parms)
     {
         MovieId = parms.MovieId;
         Title = parms.Title;
@@ -889,20 +922,20 @@ private Task GoBack() => Facade.Navigation.GoBackAsync();
 
 `GoBackAsync` calls `Shell.Current.GoToAsync("..", shellParams)` where `shellParams` contains `["__isBack"] = true`.
 
-Shell pops MovieDetailPage and calls `ApplyQueryAttributes` on BrowsePage with the `__isBack` key present.
+Shell pops MovieDetailPage and calls `ApplyQueryAttributes` on BrowsePage with `__isBack` present.
 
 ```
 BrowsePage.ApplyQueryAttributes({"__isBack": true})
 → BrowseViewModel.ApplyNavigationParameters({"__isBack": true})
-→ isGoBack = query.ContainsKey("__isBack")  // true
+→ isGoBack = true
 → SafeFireAndForget(ct => InitializeFromQueryAsync(query, isGoBack=true, ct))
 ```
 
-`BrowseViewModel` does not override `InitializeFromQueryAsync` — the base returns `Task.CompletedTask`. The movie list is not reloaded. Shortly after, `BrowsePage.OnAppearing` fires and `OnAppearingAsync` sees `Movies.Count > 0` and also skips the reload. The user sees their list immediately.
+`BrowseViewModel` does not override `InitializeFromQueryAsync` — the base returns `Task.CompletedTask`. Shortly after, `OnAppearingAsync` sees `Movies.Count > 0` and also skips the reload.
 
 ---
 
-### Flow B: Browse → Filter modal → Dismiss
+### Flow B: Browse → Filter Modal → Dismiss
 
 **Step 1 — User taps Filter**
 
@@ -953,7 +986,7 @@ private Task Dismiss() => Facade.Navigation.DismissModalAsync();
 
 **Step 5 — BrowsePage re-appears**
 
-MAUI calls `OnAppearing` on `BrowsePage`. It does **not** call `ApplyQueryAttributes`.
+MAUI calls `OnAppearing` on `BrowsePage`. It does **not** call `ApplyQueryAttributes`. (See Section 6 for the canonical explanation of this timing gap.)
 
 ```
 BrowsePage.OnAppearing()
@@ -961,49 +994,51 @@ BrowsePage.OnAppearing()
 → BrowseViewModel.OnAppearingAsync(ct)
 ```
 
-This is where the post-dismiss refresh lives. In the example app, `OnAppearingAsync` checks `Movies.Count == 0` — no reload needed since the list is already populated. In a real app, this is where you would read the updated filter from the shared service and refresh the list accordingly.
+Post-dismiss refresh lives in `OnAppearingAsync`. In the example app, it checks `Movies.Count == 0`. In a real app, this is where you read updated state from a shared service.
 
-> **Note:** `InitializeFromQueryAsync` is not called anywhere in this flow. It is only called from `ApplyNavigationParameters`, which is only called from `ApplyQueryAttributes` (for push navigation) or directly from `PresentModalAsync<TParams>` (for modal parameter delivery). Neither happens during a modal dismiss.
+> **Note:** `InitializeFromQueryAsync` is not called in this flow. It is only called via `ApplyQueryAttributes` (push navigation) or `PresentModalAsync<TParams>` (modal parameter delivery). Neither happens during a modal dismiss.
+
+**Takeaway:** Push/back navigation triggers `ApplyQueryAttributes` and `InitializeFromQueryAsync`. Modal dismiss only triggers `OnAppearingAsync`.
 
 ---
 
 ## 11. Gotchas and Tips
 
-### Transient vs Singleton: pages and ViewModels must match
+### Transient vs Singleton: Pages and ViewModels Must Match
 
-If a Page is registered as Singleton but its ViewModel is Transient, the Singleton page holds a permanent reference to the *first* ViewModel instance created. Every subsequent navigation push creates a new ViewModel (correct), but the page still has the original ViewModel as its `BindingContext` (wrong). The UI will never reflect the new ViewModel's state.
+If a Page is Singleton but its ViewModel is Transient, the Singleton page holds a permanent reference to the *first* ViewModel instance. Every subsequent navigation push creates a new ViewModel, but the page still has the original ViewModel as its `BindingContext`.
 
-The rule: **Page and ViewModel lifetimes must match.** In this app both are Transient.
+**Rule:** Page and ViewModel lifetimes must match. In this app both are Transient.
 
-The tab pages (`BrowsePage`, `FavoritesPage`) could be Singleton since they are never pushed — they are instantiated by Shell's `DataTemplate` once and reused. The example registers them as Transient to keep the rule simple and uniform. Either is correct; the important constraint is that if you make the page Singleton, the ViewModel must also be Singleton.
+Tab pages (`BrowsePage`, `FavoritesPage`) could be Singleton since they are never pushed. The example registers them as Transient to keep the rule simple.
 
-### Modal vs push: different parameter delivery paths
+### Modal vs Push: Different Parameter Delivery Paths
 
-| Navigation type | Shell routing | `ApplyQueryAttributes` called | Parameter delivery |
+| Navigation Type | Shell Routing | `ApplyQueryAttributes` Called | Parameter Delivery |
 |---|---|---|---|
 | `GoToAsync` (push) | Yes | Yes | `ShellNavigationQueryParameters["__params"]` |
 | `GoBackAsync` | Yes | Yes (on parent) | `ShellNavigationQueryParameters["__isBack"]` |
-| `PresentModalAsync` | No (PushModalAsync) | No | Direct `ApplyNavigationParameters` call |
-| `DismissModalAsync` | No (PopModalAsync) | No | None — use `OnAppearingAsync` |
+| `PresentModalAsync` | No | No | Direct `ApplyNavigationParameters` call |
+| `DismissModalAsync` | No | No | None — use `OnAppearingAsync` |
 
-### `isGoBack` is only for push back-navigation
+### `isGoBack` Is Only for Push Back-Navigation
 
-`isGoBack = true` is set when `GoBackAsync` injects `__isBack` into `ShellNavigationQueryParameters` and Shell delivers it to the parent page via `ApplyQueryAttributes`. This only happens in the push/back navigation path.
+`isGoBack = true` is set when `GoBackAsync` injects `__isBack` into `ShellNavigationQueryParameters`. This only happens in the push/back navigation path.
 
-`DismissModalAsync` (`PopModalAsync`) does not trigger `ApplyQueryAttributes` on the page below. If you check `isGoBack` in `InitializeFromQueryAsync` expecting it to be `true` after a modal dismiss, it will not be — `InitializeFromQueryAsync` is not called at all after a modal dismiss. Post-dismiss refresh belongs in `OnAppearingAsync`.
+`DismissModalAsync` does not trigger `ApplyQueryAttributes`. If you check `isGoBack` expecting it to be `true` after a modal dismiss, `InitializeFromQueryAsync` won't even be called. Post-dismiss refresh belongs in `OnAppearingAsync`.
 
-### `nameof()` and Routes must stay in sync
+### `nameof()` and Routes Must Stay in Sync
 
-`Routes.MovieDetail = "MovieDetailPage"` and `Routing.RegisterRoute(nameof(MovieDetailPage), ...)` must produce the same string. Currently both are `"MovieDetailPage"`. If the page class is renamed:
+`Routes.MovieDetail = "MovieDetailPage"` and `Routing.RegisterRoute(nameof(MovieDetailPage), ...)` must produce the same string. If the page class is renamed:
 
 1. Update `Routes.MovieDetail` to the new class name string
-2. `nameof(MovieDetailPage)` in `AppShell.xaml.cs` will automatically update (it is evaluated at compile time)
+2. `nameof(MovieDetailPage)` in `AppShell.xaml.cs` updates automatically (compile-time evaluation)
 
-A test that calls `Shell.Current.GoToAsync(Routes.MovieDetail)` and verifies navigation occurs (or a simpler string comparison test) will catch this drift.
+A test that calls `Shell.Current.GoToAsync(Routes.MovieDetail)` catches this drift.
 
-### IsBusy and nested async calls
+### IsBusy and Nested Async Calls
 
-Because `IsBusy` is ref-counted, you can call `SafeFireAndForget` multiple times concurrently and the loading indicator stays visible until all of them complete. A page that loads movies and user preferences in parallel:
+Because `IsBusy` is ref-counted, you can call `SafeFireAndForget` multiple times concurrently:
 
 ```csharp
 protected override Task OnAppearingAsync(CancellationToken ct)
@@ -1014,45 +1049,55 @@ protected override Task OnAppearingAsync(CancellationToken ct)
 }
 ```
 
-`IsBusy` is `true` from the first `SafeFireAndForget` call until the last one completes — not until the first one completes.
+`IsBusy` is `true` from the first `SafeFireAndForget` call until the last one completes.
 
-### CancellationToken: always pass it down
+### CancellationToken: Always Pass It Down
 
-`OnAppearingAsync` receives a `CancellationToken` that is cancelled when the page disappears. Pass it to every awaitable call in your override:
+`OnAppearingAsync` receives a `CancellationToken` that is cancelled when the page disappears. Pass it to every awaitable call:
 
 ```csharp
 protected override async Task OnAppearingAsync(CancellationToken ct)
 {
-    var movies = await _movieService.GetMoviesAsync(ct);  // pass ct
+    var movies = await _movieService.GetMoviesAsync(ct);
     Movies = new ObservableCollection<Movie>(movies);
 }
 ```
 
-If the user navigates away before the fetch completes, the `OperationCanceledException` is caught and swallowed by `OnAppearingInternal`. The ViewModel is not updated with stale data, and no exception is logged.
+If the user navigates away before the fetch completes, the `OperationCanceledException` is caught and swallowed.
 
 ### Disposal
 
-`BasePage.Dispose` calls `ViewModel.Dispose()`. MAUI does **not** call `Dispose` on pages automatically — the `CancellationTokenSource` is cancelled reliably through `OnDisappearing`, not through disposal. `Dispose` exists as a belt-and-suspenders path for explicit teardown in tests or custom cleanup scenarios.
+`BasePage.Dispose` calls `ViewModel.Dispose()`. MAUI does **not** call `Dispose` on pages automatically — the `CancellationTokenSource` is cancelled reliably through `OnDisappearing`, not through disposal. `Dispose` exists for explicit teardown in tests or custom cleanup.
 
-If you hold other disposable resources in a ViewModel (timers, observables, event subscriptions), override `Dispose` and clean them up there:
+If you hold other disposable resources (timers, event subscriptions), override `Dispose`:
 
 ```csharp
 public override void Dispose()
 {
     _myTimer?.Dispose();
-    base.Dispose();  // cancels and disposes the CTS
+    base.Dispose();
 }
 ```
 
+**Takeaway:** Match Page/ViewModel lifetimes; use `OnAppearingAsync` for post-modal refresh; always pass `CancellationToken`.
+
 ---
 
-*This article covers the navigation architecture as implemented in this repository. The same pattern scales to larger apps: add more routes to `Routes.cs`, register more pages in `AppShell.xaml.cs` and `MauiProgram.cs`, and add ViewModels that override `OnAppearingAsync` and `InitializeFromQueryAsync` as needed.*
+*This completes the baseline architecture as implemented in this repository.*
+
+---
+
+## Part II: Advanced Patterns
+
+> **Note:** Sections 12–20 describe **optional extension patterns** — design templates you can adopt as your app grows. These are not currently implemented in this repository. Code examples are conceptual.
 
 ---
 
 ## 12. Error Handling and User Feedback
 
-Production apps need to surface errors to users. The architecture includes an `IAlertService` abstraction in Core with implementation in the App layer.
+> *Optional extension pattern*
+
+Production apps need to surface errors to users. This pattern adds an `IAlertService` abstraction in Core with implementation in the App layer.
 
 ### IAlertService Interface
 
@@ -1120,7 +1165,7 @@ public class BaseViewModelFacade
 
 ### Safe Execution with Error Callbacks
 
-`BaseViewModel.ExecuteSafeAsync` now accepts an optional error callback:
+Extend `BaseViewModel.ExecuteSafeAsync` to accept an optional error callback:
 
 ```csharp
 protected async Task<bool> ExecuteSafeAsync(
@@ -1202,13 +1247,17 @@ public class MovieDetailViewModel : BaseViewModel<MovieDetailViewModel>
 | User needs to make a decision | Confirm alert |
 | Network error with retry option | Alert with action |
 
+**Takeaway:** Add `IAlertService` to the facade; use `SafeFireAndForgetWithErrorAlert` for user-facing async operations.
+
 ---
 
 ## 13. Returning Results from Modals
 
-A common pattern is presenting a modal that returns a result when dismissed. For example, a filter page that returns the selected filters.
+> *Optional extension pattern*
 
-### NavigationResult<T>
+A common pattern is presenting a modal that returns a result when dismissed (e.g., a filter page that returns selected filters).
+
+### NavigationResult\<T\>
 
 ```csharp
 // MauiNavigation.Core/Navigation/NavigationResult.cs
@@ -1237,7 +1286,7 @@ public class NavigationResult<TResult>
 }
 ```
 
-### IModalResultProvider<TResult>
+### IModalResultProvider\<TResult\>
 
 Modals that return results implement this interface:
 
@@ -1341,11 +1390,15 @@ public class BrowseViewModel : BaseViewModel<BrowseViewModel>
 └─────────────┘                                    └──────────────┘
 ```
 
+**Takeaway:** Use `IModalResultProvider<T>` and `TaskCompletionSource` to await modal results.
+
 ---
 
 ## 14. Tab Navigation
 
-For apps with a TabBar, you often need to switch tabs programmatically or switch to a tab and then navigate within it.
+> *Optional extension pattern*
+
+For apps with a TabBar, you often need to switch tabs programmatically or navigate within a tab after switching.
 
 ### Tab Routes
 
@@ -1365,7 +1418,7 @@ public static class Routes
 }
 ```
 
-### INavigationService Extensions
+### INavigationService Tab Extensions
 
 ```csharp
 public interface INavigationService
@@ -1455,13 +1508,17 @@ public class FavoritesViewModel : BaseViewModel<FavoritesViewModel>
 2. **Route Registration**: Tab routes must match `Route` property in `ShellContent`
 3. **Back Stack**: Switching tabs preserves each tab's navigation stack
 
+**Takeaway:** Use `//TabRoute` for tab switching; combine with page routes for deep navigation.
+
 ---
 
 ## 15. Advanced Back Navigation
 
+> *Optional extension pattern*
+
 Sometimes you need to go back multiple levels or return to the root of the current tab.
 
-### INavigationService Extensions
+### INavigationService Back Extensions
 
 ```csharp
 public interface INavigationService
@@ -1535,13 +1592,17 @@ public class ActorDetailViewModel : BaseViewModel<ActorDetailViewModel>
 |----------|--------|
 | Normal back button | `GoBackAsync()` |
 | Skip intermediate page | `GoBackAsync(2)` |
-| "Done" button in multi-step wizard | `GoBackAsync(steps)` or `GoBackToRootAsync()` |
+| "Done" in multi-step wizard | `GoBackAsync(steps)` or `GoBackToRootAsync()` |
 | "Cancel" in deep flow | `GoBackToRootAsync()` |
 | Explicit route after action | `GoToAsync("//BrowseTab")` |
+
+**Takeaway:** Build relative back routes with `..` segments or navigate to absolute tab roots.
 
 ---
 
 ## 16. Navigation Guards
+
+> *Optional extension pattern*
 
 Navigation guards prevent accidental data loss by confirming navigation when a page has unsaved changes.
 
@@ -1628,9 +1689,9 @@ public class ShellNavigationService : INavigationService
 
 Navigation guards only work for programmatic navigation (`GoBackAsync`, `GoToAsync`). They do **not** intercept:
 - Hardware back button (Android/iOS gesture)
-- Shell's built-in back button in navigation bar
+- Shell's built-in back button
 
-For hardware back button handling, you need platform-specific code or Shell's `BackButtonBehavior`:
+For hardware back button handling, use Shell's `BackButtonBehavior`:
 
 ```xml
 <Shell.BackButtonBehavior>
@@ -1638,9 +1699,13 @@ For hardware back button handling, you need platform-specific code or Shell's `B
 </Shell.BackButtonBehavior>
 ```
 
+**Takeaway:** Implement `INavigationGuard` for unsaved-changes prompts; note hardware back button limitations.
+
 ---
 
 ## 17. Deep Linking
+
+> *Optional extension pattern*
 
 Deep linking allows external apps, notifications, or web links to open specific pages in your app.
 
@@ -1811,11 +1876,15 @@ xcrun simctl openurl booted "mauinavigation://movie/123"
 | `mauinavigation://favorites` | Switch to Favorites tab |
 | `https://mauinavigation.app/movie/123` | Open movie detail (App Links) |
 
+**Takeaway:** Implement `IDeepLinkHandler` to map URIs to navigation calls; configure platform manifests.
+
 ---
 
 ## 18. Shared State Between Pages
 
-When multiple pages need to share state (like filters, user preferences, or cart items), use a singleton service with events.
+> *Optional extension pattern*
+
+When multiple pages need to share state (filters, user preferences, cart items), use a singleton service with events.
 
 ### IFilterService Interface
 
@@ -1964,14 +2033,17 @@ Always unsubscribe from events in `Dispose()`:
 public override void Dispose()
 {
     _filterService.FilterChanged -= OnFilterChanged;
-    _userService.UserChanged -= OnUserChanged;
     base.Dispose();
 }
 ```
 
+**Takeaway:** Use singleton services with events for shared state; always unsubscribe in `Dispose()`.
+
 ---
 
 ## 19. Testing ViewModels
+
+> *Optional extension pattern*
 
 The architecture is designed for testability. ViewModels depend on interfaces, making them easy to mock.
 
@@ -2062,7 +2134,7 @@ public class BrowseViewModelTests
 
         var param = Assert.IsType<MovieDetailParams>(call.Parameters);
         Assert.Equal(42, param.MovieId);
-        Assert.Equal("Test Movie", param.MovieTitle);
+        Assert.Equal("Test Movie", param.Title);
     }
 }
 ```
@@ -2073,21 +2145,20 @@ public class BrowseViewModelTests
 public class MovieDetailViewModelTests
 {
     [Fact]
-    public async Task InitializeFromQuery_ExtractsParameters()
+    public async Task InitializeFromQuery_ExtractsParams()
     {
         // Arrange
         var facade = new BaseViewModelFacade(
             new MockNavigationService(), 
             new NullAlertService());
         var viewModel = new MovieDetailViewModel(facade);
-        var query = new ShellNavigationQueryParameters
+        var query = new Dictionary<string, object>
         {
-            ["MovieId"] = "42",
-            ["MovieTitle"] = "Test Movie"
+            ["__params"] = new MovieDetailParams(42, "Test Movie")
         };
 
         // Act
-        await viewModel.InitializeFromQueryAsyncPublic(query, CancellationToken.None);
+        await viewModel.InitializeFromQueryAsync(query, isGoBack: false, CancellationToken.None);
 
         // Assert
         Assert.Equal("Test Movie", viewModel.Title);
@@ -2112,16 +2183,16 @@ public class BaseViewModelTests
 
         viewModel.PropertyChanged += (s, e) =>
         {
-            if (e.PropertyName == nameof(BaseViewModel.IsBusy) && viewModel.IsBusy)
+            if (e.PropertyName == nameof(viewModel.IsBusy) && viewModel.IsBusy)
                 wasBusy = true;
         };
 
         // Act
-        await viewModel.OnAppearingInternalPublic(CancellationToken.None);
+        await viewModel.OnAppearingInternal();
 
         // Assert
         Assert.True(wasBusy);
-        Assert.False(viewModel.IsBusy); // Should be false after completion
+        Assert.False(viewModel.IsBusy);
     }
 }
 ```
@@ -2173,16 +2244,17 @@ public class FilterServiceTests
 # Run all tests
 dotnet test MauiNavigation.Tests
 
-# Run with verbose output
-dotnet test MauiNavigation.Tests -v n
-
 # Run specific test class
 dotnet test MauiNavigation.Tests --filter "FullyQualifiedName~FilterServiceTests"
 ```
 
+**Takeaway:** Create `MockNavigationService` to capture navigation calls; test ViewModels with interface mocks.
+
 ---
 
 ## 20. Quick Reference
+
+> This section uses names and patterns exactly as defined in earlier sections.
 
 ### Navigation Methods
 
@@ -2238,4 +2310,22 @@ SafeFireAndForget(LoadDataAsync, showLoader: true, onError: ex =>
 
 ---
 
-*This guide covers navigation patterns for .NET MAUI apps of any size. Start with the basics (Sections 1-11) and add advanced patterns (Sections 12-19) as your app grows. The example code in this repository demonstrates every pattern described here.*
+## Architecture Invariants
+
+A concise checklist of invariants that must hold for this architecture to work correctly:
+
+- [ ] **Core has no MAUI references.** `MauiNavigation.Core.csproj` must not reference `Microsoft.Maui.Controls`.
+- [ ] **Routes constants match page names.** `Routes.MovieDetail` must equal `nameof(MovieDetailPage)`.
+- [ ] **Page and ViewModel lifetimes match.** Both must be Transient (or both Singleton for tab pages).
+- [ ] **Modal routes are registered.** Call `navigationService.RegisterModal(...)` in `AppShell` for every modal.
+- [ ] **Push routes are registered.** Call `Routing.RegisterRoute(...)` in `AppShell` for every pushed page.
+- [ ] **`__params` carries typed parameters.** Use `ShellNavigationQueryParameters["__params"]` for object passing.
+- [ ] **`__isBack` signals back-navigation.** Presence of this key (not its value) indicates return navigation.
+- [ ] **Modal parameters are delivered directly.** `PresentModalAsync<TParams>` calls `ApplyNavigationParameters` before push.
+- [ ] **Post-modal refresh uses `OnAppearingAsync`.** `ApplyQueryAttributes` is not called after modal dismiss.
+- [ ] **Dispose unsubscribes events.** Always unsubscribe from singleton service events in `Dispose()`.
+- [ ] **CancellationToken is passed through.** All async operations should honor `LifecycleToken`.
+
+---
+
+*This guide covers navigation patterns for .NET MAUI apps of any size. Start with the basics (Sections 1–11) and add advanced patterns (Sections 12–19) as your app grows.*
